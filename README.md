@@ -5,7 +5,7 @@ Dataflow made in apache-beam with deploy in GCP.
 Features Dataflow
 * Public message in GCP-Topic.
 * Dataflow pull the message and store in GCP-Storage.
-* Process and parse the message to persist en GCP-BigQuery.  
+* Process and parse the message to persist in GCP-BigQuery.  
 
 
 # Test in local
