@@ -21,7 +21,6 @@ Create and activate virtualenv
 $ user@equip directory % virtualenv venv-df/
 $ user@equip directory %. venv-df/bin/activate
 $ (venv-df) user@equip directory %
-
 `````
 
 Python Libraries
