@@ -1,0 +1,40 @@
+{
+    "fields": [
+        {  "name": "store_id", "type": "NUMERIC"            } ,
+        {  "name": "terminal_number", "type": "NUMERIC"     } ,  
+        {  "name": "transaction_date", "type": "STRING"     } ,
+        {  "name": "transaction_code", "type": "NUMERIC"    } , 
+        {  "name": "transaction_status", "type": "NUMERIC"  } , 
+        {  "name": "sequence_number", "type": "NUMERIC"     } , 
+        {  "name": "country_flag", "type": "STRING"         } , 
+        {  "name": "buy_date", "type": "STRING"             } , 
+        {  "name": "transaction_hour", "type": "STRING"     } , 
+        {  "name": "cashier_number", "type": "STRING"       } , 
+        {  "name": "partition_date", "type": "TIMESTAMP"    } ,
+        {
+            "name": "bills_details",
+            "type": "RECORD",
+            "mode": "REPEATED",
+            "fields": [
+                {   "name": "sii_ticket_number", "type": "STRING"           },
+                {   "name": "identity_number_document", "type": "STRING"    }
+            ]
+        },
+        {
+            "name": "products_details",
+            "type": "RECORD",
+            "mode": "REPEATED",
+            "fields" : [
+                { "name": "quantity", "type": "NUMERIC"                 },
+                { "name": "transaction_change_type", "type": "STRING"   },
+                { "name": "upc_number", "type": "STRING"                },
+                { "name": "product_description", "type": "STRING"       },
+                { "name": "pos_description", "type": "STRING"           },
+                { "name": "productType", "type": "STRING"               },
+                { "name": "product_sku_mark", "type": "STRING"          },
+                { "name": "sku", "type": "STRING"                       },
+                { "name": "internal_id", "type": "STRING"               }
+            ]
+        }
+    ]
+}
