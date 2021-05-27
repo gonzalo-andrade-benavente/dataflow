@@ -1,7 +1,17 @@
+""" 
+Implementación Dataflow evento Sales
+Pendiente:
+    - Capturar atributos y enviar a dataset correspondiente.
+    - Nomeclatura correcta tablas y campos.
+    - Encriptación rut.
+    - Almacenar en Storage.
+
+ """
 import argparse
 import os
 import logging
 import json
+import datetime
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
@@ -20,17 +30,18 @@ INPUT_SUBSCRIPTION = os.getenv('GCP_PUBSUB_SUBSCRIPTION')
 BIGQUERY_TABLE = os.getenv('GCP_TABLE') 
 # field_1:FIELD_1_TYPE,field_2:FIELD_2_TYPE,....
 #BIGQUERY_SCHEMA = os.getenv('GCP_BIGQUERY_SCHEMA') 
+OUTPUT_STORAGE = "1"
 
 BIGQUERY_SCHEMA = {
     "fields": [
         {  "name": "store_id", "type": "NUMERIC"            } ,
         {  "name": "terminal_number", "type": "NUMERIC"     } ,  
-        {  "name": "transaction_date", "type": "STRING"     } ,
+        {  "name": "transaction_date", "type": "DATE"     } ,
         {  "name": "transaction_code", "type": "NUMERIC"    } , 
         {  "name": "transaction_status", "type": "NUMERIC"  } , 
         {  "name": "sequence_number", "type": "NUMERIC"     } , 
         {  "name": "country_flag", "type": "STRING"         } , 
-        {  "name": "buy_date", "type": "STRING"             } , 
+        {  "name": "buy_date", "type": "DATE"             } , 
         {  "name": "transaction_hour", "type": "STRING"     } , 
         {  "name": "cashier_number", "type": "STRING"       } , 
         {  "name": "partition_date", "type": "TIMESTAMP"    } ,
@@ -57,7 +68,11 @@ BIGQUERY_SCHEMA = {
                 { "name": "productType", "type": "STRING"               },
                 { "name": "product_sku_mark", "type": "STRING"          },
                 { "name": "sku", "type": "STRING"                       },
-                { "name": "internal_id", "type": "STRING"               }
+                { "name": "internal_id", "type": "STRING"               },
+                { "name": "sale_amount", "type": "NUMERIC"               },
+                { "name": "item_base_cost_without_taxes", "type": "NUMERIC" },
+                { "name": "net_amount", "type": "NUMERIC"               },
+                { "name": "net_amount_credit_note", "type": "NUMERIC"   }
             ]
         }
     ]
@@ -65,6 +80,15 @@ BIGQUERY_SCHEMA = {
 
 additional_bq_parameters = { "timePartitioning": {"type": "DAY", "field": "partition_date"}}
 
+def parseDate(string_date):
+    return datetime.datetime.strptime(string_date, "%Y%m%d").strftime("%Y-%m-%d")
+
+class StorageGcp(beam.DoFn):
+    def __init__(self, output_path):
+        self.output_path = output_path
+    
+    def process(self, batch, window=beam.DoFn.WindowParam):
+        print('hola mundo')
 
 class CustomParsing(beam.DoFn):
     """ Custom ParallelDo class to apply a custom transformation """
@@ -86,12 +110,12 @@ class CustomParsing(beam.DoFn):
 
         new_parsed["store_id"] = parsed["storeId"]
         new_parsed["terminal_number"] = parsed["terminalNumber"]
-        new_parsed["transaction_date"] = parsed["transactionDate"]
+        new_parsed["transaction_date"] = parseDate(parsed["transactionDate"])
         new_parsed["transaction_code"] = parsed["transactionCode"]
         new_parsed["transaction_status"] = parsed["transactionStatus"]
         new_parsed["sequence_number"]  = parsed["sequenceNumber"]
         new_parsed["country_flag"] = parsed["countryFlag"]
-        new_parsed["buy_date"] = parsed["buyDate"]
+        new_parsed["buy_date"] = parseDate(parsed["buyDate"]) 
         new_parsed["transaction_hour"] = parsed["transactionHour"]
         new_parsed["cashier_number"] = parsed["cashierNumber"]
         new_parsed["partition_date"] = timestamp.to_rfc3339()
@@ -110,6 +134,20 @@ class CustomParsing(beam.DoFn):
         new_parsed_products_details = []
 
         for product_detail in parsed["productsDetails"]:
+
+            single_amount = {}
+            
+            for sale_amount in product_detail["salesAmount"]:
+                if sale_amount["description"] == 'saleAmount':
+                    single_amount["sale_amount"] = sale_amount["value"]
+                elif sale_amount["description"] == 'itemBaseCostWithoutTaxes':
+                    single_amount["item_base_cost_without_taxes"] = sale_amount["value"]
+                elif sale_amount["description"] == 'netAmount':
+                    single_amount["net_amount"] = sale_amount["value"]
+                elif sale_amount["description"] == 'netAmountCreditNote':
+                    single_amount["net_amount_credit_note"] = sale_amount["value"]
+
+
             new_product_detail = {}
             #new_product_detail["short_sku_descrip"] = "No se lo que le pasa" #product_detail["shortSkuDescrip"]
             new_product_detail["quantity"] = product_detail["quantity"]
@@ -121,12 +159,16 @@ class CustomParsing(beam.DoFn):
             new_product_detail["product_sku_mark"] = product_detail["productSkuMark"]
             new_product_detail["sku"] = product_detail["sku"]
             new_product_detail["internal_id"] = product_detail["internalId"]
+            new_product_detail["sale_amount"] = single_amount["sale_amount"]
+            new_product_detail["item_base_cost_without_taxes"] = single_amount["item_base_cost_without_taxes"]
+            new_product_detail["net_amount"] = single_amount["net_amount"]
+            new_product_detail["net_amount_credit_note"] = single_amount["net_amount_credit_note"]
+
             new_parsed_products_details.append(new_product_detail)
             #print(new_product_detail)
 
         new_parsed["products_details"] = new_parsed_products_details
 
-        #print(new_parsed)
         yield new_parsed
 
 def run():
@@ -159,9 +201,9 @@ def run():
         (
             p
             | "Step 1  - ReadFromPubSub" >> beam.io.gcp.pubsub.ReadFromPubSub(
-                subscription=known_args.input_subscription, timestamp_attribute=None
+                subscription=known_args.input_subscription, timestamp_attribute=None #withAtributtes
             )
-            #| "Step 2 - Storage in bucket"
+            #| "Step 2 - Storage in bucket" >> beam.ParDo(StorageGcp("{}/ALL/sales/".format(OUTPUT_STORAGE)))
             | "Step 3 - CustomParse" >> beam.ParDo(CustomParsing())
             | "Step 4 - WriteToBigQuery" >> beam.io.WriteToBigQuery(
                 known_args.output_table,
