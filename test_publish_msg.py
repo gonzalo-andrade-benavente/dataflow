@@ -1596,7 +1596,11 @@ def main():
                 "uniqueNumber": "0017375541005930210513165720",
                 "cardBrand": "0002"
             }
-        ]
+        ],
+        "deletedProductsNumber": "0000",
+        "diminishProductsNumber": "0000",
+        "transactionSetCode": "B",
+        "transactionStatev": "Valid"
         }
         publisher.publish(json.dumps(data))
         time.sleep(random())

@@ -72,9 +72,27 @@ BIGQUERY_SCHEMA = {
                 { "name": "sale_amount", "type": "NUMERIC"               },
                 { "name": "item_base_cost_without_taxes", "type": "NUMERIC" },
                 { "name": "net_amount", "type": "NUMERIC"               },
-                { "name": "net_amount_credit_note", "type": "NUMERIC"   }
+                { "name": "net_amount_credit_note", "type": "NUMERIC"   },
+                { "name": "product_iva_1", "type": "NUMERIC" },
+                { "name": "amount_iva_1", "type": "NUMERIC"               },
+                { "name": "iva_percent", "type": "NUMERIC"   }
             ]
-        }
+        },  
+        { "name": "document_code", "type": "STRING"   },
+        #
+        #{
+        #    "name": "payment_details",
+        #    "type": "RECORD",
+        #    "mode": 'REPEATED',
+        #    "fields" : [
+        #    
+        #    ]
+        #}
+        { "name": "deleted_products_number", "type": "STRING"   },
+        { "name": "diminish_products_number", "type": "STRING"   },
+        { "name": "transaction_set_code", "type": "STRING"   },
+        { "name": "transaction_statev", "type": "STRING"   }
+
     ]
 }
 
@@ -168,6 +186,12 @@ class CustomParsing(beam.DoFn):
             #print(new_product_detail)
 
         new_parsed["products_details"] = new_parsed_products_details
+
+        new_parsed["document_code"] = parsed["documentCode"]
+        new_parsed["deleted_products_number"] = parsed["deletedProductsNumber"]
+        new_parsed["diminish_products_number"] = parsed["diminishProductsNumber"]
+        new_parsed["transaction_set_code"] = parsed["transactionSetCode"]
+        new_parsed["transaction_statev"] = parsed["transactionStatev"]
 
         yield new_parsed
 
