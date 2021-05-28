@@ -11,7 +11,7 @@ from google.cloud import pubsub_v1
 CREDENTIALS_PATH = "credentials/xenon-chain-308319-c511b4245b0d.json"
 PROJECT_ID = "xenon-chain-308319"
 TOPIC_ID = "inbound-topic"
-MAX_MESSAGES = 10
+MAX_MESSAGES = 1
 
 # --- PubSub Utils Classes
 class PubSubPublisher:

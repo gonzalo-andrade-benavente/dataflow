@@ -14,6 +14,7 @@ import json
 import datetime
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+import apache_beam.io.gcp.pubsub
 
 from dotenv import load_dotenv
 
@@ -107,6 +108,16 @@ class StorageGcp(beam.DoFn):
     
     def process(self, batch, window=beam.DoFn.WindowParam):
         print('hola mundo')
+
+class ParsingAttributes(beam.DoFn):
+
+    def process(self, element: apache_beam.io.gcp.pubsub.PubsubMessage, timestamp=beam.DoFn.TimestampParam, window=beam.DoFn.WindowParam):
+        el:bytes = element.data
+        parsed = json.loads(el.decode("utf-8"))
+        print(element.attributes)
+        new_parsed = {}
+        new_parsed["hola"] = parsed["storeId"]
+        print(new_parsed)
 
 class CustomParsing(beam.DoFn):
     """ Custom ParallelDo class to apply a custom transformation """
@@ -222,20 +233,35 @@ def run():
 
     # Defining our pipeline and its steps
     with beam.Pipeline(options=pipeline_options) as p:
-        (
-            p
-            | "Step 1  - ReadFromPubSub" >> beam.io.gcp.pubsub.ReadFromPubSub(
-                subscription=known_args.input_subscription, timestamp_attribute=None #withAtributtes
-            )
-            #| "Step 2 - Storage in bucket" >> beam.ParDo(StorageGcp("{}/ALL/sales/".format(OUTPUT_STORAGE)))
-            | "Step 3 - CustomParse" >> beam.ParDo(CustomParsing())
-            | "Step 4 - WriteToBigQuery" >> beam.io.WriteToBigQuery(
-                known_args.output_table,
-                schema=known_args.output_schema,
-                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-                additional_bq_parameters=additional_bq_parameters
-            )
+
+        streaming_data = ( 
+            p | 'ReadFromPubSub' >> beam.io.gcp.pubsub.ReadFromPubSub( 
+                subscription=known_args.input_subscription, 
+                timestamp_attribute=None,
+                with_attributes=True)
         )
+
+        parsing_attributes = ( 
+            streaming_data | '' >> beam.ParDo(ParsingAttributes())
+        )
+
+        
+
+        #
+        #(
+        #    p
+        #    | "Step 1  - ReadFromPubSub" >> beam.io.gcp.pubsub.ReadFromPubSub(
+        #        subscription=known_args.input_subscription, timestamp_attribute=None #withAtributtes
+        #    )
+        #    #| "Step 2 - Storage in bucket" >> beam.ParDo(StorageGcp("{}/ALL/sales/".format(OUTPUT_STORAGE)))
+        #    | "Step 3 - CustomParse" >> beam.ParDo(CustomParsing())
+        #    | "Step 4 - WriteToBigQuery" >> beam.io.WriteToBigQuery(
+        #        known_args.output_table,
+        #        schema=known_args.output_schema,
+        #        write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+        #        additional_bq_parameters=additional_bq_parameters
+        #    )
+        #)
 
     
 if __name__ == "__main__":
