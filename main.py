@@ -35,6 +35,12 @@ OUTPUT_STORAGE = "1"
 
 BIGQUERY_SCHEMA = {
     "fields": [
+        {  "name": "event_id", "type": "STRING"            } ,
+        {  "name": "event_type_name", "type": "STRING"            } ,
+        {  "name": "entity_type_name", "type": "STRING"            } ,
+        {  "name": "country_cd", "type": "STRING"            } ,
+        {  "name": "channel_name", "type": "STRING"            } ,
+
         {  "name": "store_id", "type": "NUMERIC"            } ,
         {  "name": "terminal_number", "type": "NUMERIC"     } ,  
         {  "name": "transaction_date", "type": "DATE"     } ,
@@ -99,8 +105,64 @@ BIGQUERY_SCHEMA = {
 
 additional_bq_parameters = { "timePartitioning": {"type": "DAY", "field": "partition_date"}}
 
+additional_bq_parameters_pay = { "timePartitioning": {"type": "DAY", "field": "partition_date_tmst"}}
+
+output_table_pay = "%s:%s.%s" % (os.getenv('GCP_PROJECT'), os.getenv('GCP_BIGQUERY_DATASET'), 'btd_payment') 
+
+output_schema_pay = {
+    "fields": [
+        {  "name": "event_id", "type": "STRING" } ,
+        {  "name": "event_type_name", "type": "STRING" } ,
+        {  "name": "entity_type_name", "type": "STRING" } ,
+        {  "name": "country_cd", "type": "STRING" } ,
+        {  "name": "channel_name", "type": "STRING" },
+        {  "name": "transaction_date_dt", "type": "DATE" } ,
+        {  "name": "store_id", "type": "NUMERIC" } ,
+        {  "name": "terminal_number_num", "type": "NUMERIC" } ,  
+        {  "name": "sequence_number_num", "type": "NUMERIC" } ,
+        {  "name": "transaction_code_cd", "type": "NUMERIC" } ,
+        {  "name": "transaction_status_cd", "type": "NUMERIC" } ,
+        {  "name": "transaction_set_code_cd", "type": "STRING" } ,
+        {  "name": "transaction_state_v_desc", "type": "STRING" } ,
+        {
+            "name": "payment_details_rec",
+            "type": "RECORD",
+            "mode": "REPEATED",
+            "fields" : [
+                { "name": "doc_type_numbertbk_num", "type": "NUMERIC" },
+                { "name": "send_messagetbk_tm", "type": "STRING" },
+                { "name": "received_messagetbk_tm", "type": "STRING" },
+                { "name": "unique_number_num", "type": "NUMERIC" },
+                { "name": "card_brand_cd", "type": "STRING" },
+        #        { "name": "transbank_amount_amt", "type": "NUMERIC" },
+        #        { "name": "charge_code_cd", "type": "STRING" },
+        #        { "name": "total_amount_cash_amt", "type": "NUMERIC" },
+        #        { "name": "total_net_ncnd_amt", "type": "NUMERIC" },
+        #        { "name": "total_iva_ncnd_amt", "type": "NUMERIC" },
+        #        { "name": "total_aditional_iva_ncnd_amt", "type": "NUMERIC" },
+        #        { "name": "total_net_reverse_amt", "type": "NUMERIC"  },
+        #        { "name": "total_iva_reverse_amt", "type": "NUMERIC" },
+        #        { "name": "total_aditional_iva_ncnd_reverse_amt", "type": "NUMERIC"  },
+            ]
+        },
+        {  "name": "partition_date_tmst", "type": "TIMESTAMP" } , 
+    ]
+}
+
 def parseDate(string_date):
     return datetime.datetime.strptime(string_date, "%Y%m%d").strftime("%Y-%m-%d")
+
+def parseTime(string_time):
+    return datetime.datetime.strptime(string_time, "%H%M%S").strftime("%H:%M:%S")
+
+def parseAttributes(attributes):
+    attributes_parsed = {}
+    attributes_parsed["event_id"] = attributes.attributes["eventId"]
+    attributes_parsed["event_type_name"] = attributes.attributes["eventType"]
+    attributes_parsed["entity_type_name"] = attributes.attributes["entityType"]
+    attributes_parsed["country_cd"] = attributes.attributes["country"].lower()
+    attributes_parsed["channel_name"] = attributes.attributes["channel"]
+    return attributes_parsed
 
 class StorageGcp(beam.DoFn):
     def __init__(self, output_path):
@@ -109,15 +171,57 @@ class StorageGcp(beam.DoFn):
     def process(self, batch, window=beam.DoFn.WindowParam):
         print('hola mundo')
 
-class ParsingAttributes(beam.DoFn):
+class CustomParsingPayment(beam.DoFn):
 
     def process(self, element: apache_beam.io.gcp.pubsub.PubsubMessage, timestamp=beam.DoFn.TimestampParam, window=beam.DoFn.WindowParam):
-        el:bytes = element.data
-        parsed = json.loads(el.decode("utf-8"))
-        print(element.attributes)
-        new_parsed = {}
-        new_parsed["hola"] = parsed["storeId"]
-        print(new_parsed)
+        data:bytes = element.data
+        data = json.loads(data.decode("utf-8"))
+        #print(element.attributes)
+        attributes_parsed = parseAttributes(element)
+        
+        new_parsed = attributes_parsed
+        new_parsed["transaction_date_dt"] = parseDate(data["transactionDate"])
+        new_parsed["store_id"] = data["storeId"]
+        new_parsed["terminal_number_num"] = data["terminalNumber"]
+        new_parsed["sequence_number_num"]  = data["sequenceNumber"]
+        new_parsed["transaction_code_cd"] = data["transactionCode"]
+        new_parsed["transaction_status_cd"] = data["transactionStatus"]
+        new_parsed["transaction_set_code_cd"] = data["transactionSetCode"]
+        new_parsed["transaction_state_v_desc"] = data["transactionStatev"]
+
+        # Payment Details Record
+        new_payment_details = []
+        for payment_detail in data["paymentDetails"]:
+            new_payment_detail = {}
+            new_payment_detail["doc_type_numbertbk_num"] = payment_detail["docTypeNumberTBK"]
+            new_payment_detail["send_messagetbk_tm"] = parseTime(payment_detail["sendMessageTBK"].removeprefix('00'))
+            new_payment_detail["received_messagetbk_tm"] = parseTime(payment_detail["receiveMesgTBK"].removeprefix('00'))
+            new_payment_detail["unique_number_num"] = payment_detail["uniqueNumber"]
+            new_payment_detail["card_brand_cd"] = payment_detail["cardBrand"]
+            #print(payment_detail["sendMessageTBK"][2:8])
+            #print(payment_detail["sendMessageTBK"].removeprefix('00'))
+            #print(parseTime(payment_detail["sendMessageTBK"].removeprefix('00')))
+            new_payment_details.append(new_payment_detail)
+
+        new_parsed["payment_details_rec"] = new_payment_details
+        new_parsed["partition_date_tmst"] = timestamp.to_rfc3339()
+        
+        yield new_parsed
+
+
+class CustomParsingTransaction(beam.DoFn):
+
+    def process(self, element: apache_beam.io.gcp.pubsub.PubsubMessage, timestamp=beam.DoFn.TimestampParam, window=beam.DoFn.WindowParam):
+        data:bytes = element.data
+        data = json.loads(data.decode("utf-8"))
+        #print(element.attributes)
+        attributes_parsed = parseAttributes(element)
+        
+        new_parsed = attributes_parsed
+        new_parsed["store_id"] = data["storeId"]
+
+        yield new_parsed
+
 
 class CustomParsing(beam.DoFn):
     """ Custom ParallelDo class to apply a custom transformation """
@@ -241,9 +345,35 @@ def run():
                 with_attributes=True)
         )
 
-        parsing_attributes = ( 
-            streaming_data | '' >> beam.ParDo(ParsingAttributes())
+        #parsing_message_transaction = ( 
+        #    streaming_data | 'Parsing Transaction' >> beam.ParDo(CustomParsingTransaction())
+        #)
+
+        parsing_message_payment = ( 
+            streaming_data | 'Parsing Payment' >> beam.ParDo(CustomParsingPayment())
         )
+
+        #write_bq_transaction = (
+        #    parsing_message_transaction | 'Write BigQuery Transaction' >> beam.io.WriteToBigQuery(
+        #        known_args.output_table,
+        #        schema=known_args.output_schema,
+        #        write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+        #        additional_bq_parameters=additional_bq_parameters
+        #    )
+        #)
+
+        write_bq_payment = (
+            parsing_message_payment | 'Write BigQuery Paymenth' >> beam.io.WriteToBigQuery(
+                output_table_pay,
+                schema=output_schema_pay,
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                additional_bq_parameters=additional_bq_parameters_pay
+            )
+        )
+
+        #write_bq_payment = (
+        #    
+        #)
 
         
 
