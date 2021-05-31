@@ -134,15 +134,15 @@ output_schema_pay = {
                 { "name": "received_messagetbk_tm", "type": "STRING" },
                 { "name": "unique_number_num", "type": "NUMERIC" },
                 { "name": "card_brand_cd", "type": "STRING" },
-        #        { "name": "transbank_amount_amt", "type": "NUMERIC" },
-        #        { "name": "charge_code_cd", "type": "STRING" },
-        #        { "name": "total_amount_cash_amt", "type": "NUMERIC" },
-        #        { "name": "total_net_ncnd_amt", "type": "NUMERIC" },
-        #        { "name": "total_iva_ncnd_amt", "type": "NUMERIC" },
-        #        { "name": "total_aditional_iva_ncnd_amt", "type": "NUMERIC" },
-        #        { "name": "total_net_reverse_amt", "type": "NUMERIC"  },
-        #        { "name": "total_iva_reverse_amt", "type": "NUMERIC" },
-        #        { "name": "total_aditional_iva_ncnd_reverse_amt", "type": "NUMERIC"  },
+                { "name": "transbank_amount_amt", "type": "NUMERIC" },
+                { "name": "charge_code_cd", "type": "STRING" },
+                { "name": "total_amount_cash_amt", "type": "NUMERIC" },
+                { "name": "total_net_ncnd_amt", "type": "NUMERIC" },
+                { "name": "total_iva_ncnd_amt", "type": "NUMERIC" },
+                { "name": "total_aditional_iva_ncnd_amt", "type": "NUMERIC" },
+                { "name": "total_net_reverse_amt", "type": "NUMERIC"  },
+                { "name": "total_iva_reverse_amt", "type": "NUMERIC" },
+                { "name": "total_aditional_iva_ncnd_reverse_amt", "type": "NUMERIC"  },
             ]
         },
         {  "name": "partition_date_tmst", "type": "TIMESTAMP" } , 
@@ -169,7 +169,8 @@ class StorageGcp(beam.DoFn):
         self.output_path = output_path
     
     def process(self, batch, window=beam.DoFn.WindowParam):
-        print('hola mundo')
+        print('Falta persistir en Cloud Storage')
+
 
 class CustomParsingPayment(beam.DoFn):
 
@@ -191,7 +192,9 @@ class CustomParsingPayment(beam.DoFn):
 
         # Payment Details Record
         new_payment_details = []
+        
         for payment_detail in data["paymentDetails"]:
+            
             new_payment_detail = {}
             new_payment_detail["doc_type_numbertbk_num"] = payment_detail["docTypeNumberTBK"]
             new_payment_detail["send_messagetbk_tm"] = parseTime(payment_detail["sendMessageTBK"].removeprefix('00'))
@@ -201,6 +204,27 @@ class CustomParsingPayment(beam.DoFn):
             #print(payment_detail["sendMessageTBK"][2:8])
             #print(payment_detail["sendMessageTBK"].removeprefix('00'))
             #print(parseTime(payment_detail["sendMessageTBK"].removeprefix('00')))
+            
+            for sale_amount in payment_detail["salesAmount"]:
+                if sale_amount["description"] == 'transbankAmount':
+                    new_payment_detail["transbank_amount_amt"] = sale_amount["value"]
+                elif sale_amount["description"] == 'chargeCode':
+                    new_payment_detail["charge_code_cd"] = sale_amount["value"]
+                elif sale_amount["description"] == 'totalAmountCash':
+                    new_payment_detail["total_amount_cash_amt"] = sale_amount["value"]
+                elif sale_amount["description"] == 'totalNetNCND':
+                    new_payment_detail["total_net_ncnd_amt"] = sale_amount["value"]
+                elif sale_amount["description"] == 'totalIvaNCND':
+                    new_payment_detail["total_iva_ncnd_amt"] = sale_amount["value"]
+                elif sale_amount["description"] == 'totalAditionalIvaNCND':
+                    new_payment_detail["total_aditional_iva_ncnd_amt"] = sale_amount["value"]
+                elif sale_amount["description"] == 'totalNetReverse':
+                    new_payment_detail["total_net_reverse_amt"] = sale_amount["value"]
+                elif sale_amount["description"] == 'totalIvaReverse':
+                    new_payment_detail["total_iva_reverse_amt"] = sale_amount["value"]
+                elif sale_amount["description"] == 'totalAditionalIvaNCNDReverse':
+                    new_payment_detail["total_aditional_iva_ncnd_reverse_amt"] = sale_amount["value"]
+            
             new_payment_details.append(new_payment_detail)
 
         new_parsed["payment_details_rec"] = new_payment_details
@@ -343,6 +367,10 @@ def run():
                 subscription=known_args.input_subscription, 
                 timestamp_attribute=None,
                 with_attributes=True)
+        )
+
+        storage_data = (
+            streaming_data | 'Storage Data' >> beam.ParDo(StorageGcp('output_directory/') )
         )
 
         #parsing_message_transaction = ( 
