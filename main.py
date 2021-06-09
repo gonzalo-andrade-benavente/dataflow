@@ -68,9 +68,12 @@ BIGQUERY_SCHEMA = {
             "mode": "REPEATED",
             "description": "Products Details",
             "fields" : [
-        #        { "name": "quantity", "type": "NUMERIC"                 },
+        
         #        { "name": "transaction_change_type", "type": "STRING"   },
-                { "name": "upc_number_num", "type": "NUMERIC"                }
+                { "name": "upc_number_num", "type": "NUMERIC", "description":"Bar code UPC/EAN"  },
+                { "name": "quantity_qty", "type": "NUMERIC", "description" : "Quantity of products"  },
+                { "name": "sale_amount_amt", "type": "NUMERIC", "description" : "Sale Amount"  },
+                { "name": "net_amount_amt", "type": "NUMERIC", "description" : "Net Amount"  },
         #        { "name": "product_description", "type": "STRING"       },
         #        { "name": "pos_description", "type": "STRING"           },
         #        { "name": "productType", "type": "STRING"               },
@@ -87,17 +90,37 @@ BIGQUERY_SCHEMA = {
             ]
         },
           
-        # { "name": "document_code", "type": "STRING"   },
         #
         #{
-        #    "name": "payment_details",
+        #    "name": "stamps_rec",
         #    "type": "RECORD",
         #    "mode": 'REPEATED',
+        #    "description" : "Stamps from event sale",
         #    "fields" : [
-        #    
+        #        { "name" : "description", "type" : "STRING"},
+        #        { "name" : "value", "type" : "STRING"},
         #    ]
-        #}
-        
+        #}, 
+        { "name": "document_code_cd", "type": "STRING"   },
+        #{
+        #    "name": "sales_executives_rec",
+        #    "type": "RECORD",
+        #    "mode": 'REPEATED',
+        #    "description" : "Sales executives from event sale",
+        #    "fields" : [
+        #        { "name" : "description", "type" : "STRING"},
+        #        { "name" : "value", "type" : "STRING"},
+        #    ]
+        #},
+        #{
+        #    "name": "previous_document_rec",
+        #    "type": "RECORD",
+        #    "mode": 'REPEATED',
+        #    "description" : "Previos documents from event sale",
+        #    "fields" : [
+        #        { "name" : "sii_timestamp", "type" : "STRING"},
+        #    ]
+        #},
         #{ "name": "deleted_products_number", "type": "STRING"   },
         #{ "name": "diminish_products_number", "type": "STRING"   },
         #{ "name": "transaction_set_code", "type": "STRING"   },
@@ -176,13 +199,29 @@ class ParsingData(beam.DoFn):
             
             if data["transaction_code_cd"] in [1, 35]:
                 if "productsDetails" in element_data:
-                    product_detail = {}
                     for product in element_data["productsDetails"]:
+                        product_detail = {} # Dentro del for por la extraña estructura de Perú    
                         if "upcNumber" in product:
                             product_detail["upc_number_num"] = product["upcNumber"]
-                        products_detail.append(product_detail)
+                        if "upcProductGuideD" in product:
+                            product_detail["upc_number_num"] = product["upcProductGuideD"]
+                        if "quantity" in product:
+                            product_detail["quantity_qty"] = product["quantity"]
+                        if "salesAmount" in product:
+                            for amount in product["salesAmount"]:
+                                if amount["description"] == "saleAmount":
+                                    product_detail["sale_amount_amt"] = amount["value"]
+                                if amount["description"] == "netAmount":
+                                    product_detail["net_amount_amt"] = amount["value"]
 
-            
+                                                            
+                        # En Perú funciona de manera extraña.    
+                        if (not bool(product_detail) ) == False:
+                            products_detail.append(product_detail)
+
+            # Por validar, ya que se generaría un record sobre record.
+            data["products_details_rec"] = products_detail
+
             if "billsDetails" in element_data:
                 for detail in element_data["billsDetails"]:
                     if "siiTicketNumber" in detail:
@@ -191,13 +230,36 @@ class ParsingData(beam.DoFn):
                         data["identity_number_document_id"] = detail["identityNumberDocument"]
                     if "identityNumberDocumentType" in detail:
                         data["identity_number_document_type_cd"] = detail["identityNumberDocumentType"]
-            #for bill_detail in parsed["billsDetails"]:
-            #new_bill_detail = {}
-            #new_bill_detail["sii_ticket_number"] = bill_detail["siiTicketNumber"]
-            #new_bill_detail["identity_number_document"] = bill_detail["identityNumberDocument"]
-            #new_parsed_bill_details.append(new_bill_detail)
 
-            data["products_details_rec"] = products_detail
+
+            stamps = []
+            if "stamps" in element_data:
+                for stamp in element_data["stamps"]:
+                    stamp_detail = {}
+                    stamp_detail["description"] = stamp["description"]
+                    stamp_detail["value"] = stamp["value"]
+                    stamps.append(stamp_detail)
+
+            #data["stamps_rec"] = stamps
+
+            if "documentCode" in element_data:
+                data["document_code_cd"] = element_data["documentCode"]
+
+            #if "previousDocument" in element_data:
+            #    for previous in element_data["previousDocument"]:
+            #        if "siiTimestamp" in previous:
+            #            data["sii_timestamp"] = previous["siiTimestamps"]
+
+            executives = []
+            if "salesExecutives" in element_data:
+                for executive in element_data["salesExecutives"]:
+                    executiv = {}
+                    executiv["description"] = executive["description"]
+                    executiv["value"] = executive["value"]
+                    executives.append(executiv)
+
+            #data["sales_executives_rec"] = executives
+            
             
         except:
             print("Something went wrong")
